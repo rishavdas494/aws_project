@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create multi-tier architechture
+Resources:
+myVpc:
+Type: 'AWS::EC2::VPC'
+Properties:
+CidrBlock: 10.0.0.0/16
+Tags:
+- Key: Name
+Value: myVpc
+pubSubnetWebTier:
+Type: 'AWS::EC2::Subnet'
+Properties:
+CidrBlock: 10.0.0.0/24
+VpcId: !Ref myVpc
+AvailabilityZone: ap-south-1b
+MapPublicIpOnLaunch: 'true'
+Tags:
+- Key: Name
+Value: pubSubnetWebTier
+priSubnetAppTier:
+Type: 'AWS::EC2::Subnet'
+Properties:
+CidrBlock: 10.0.1.0/24
+VpcId: !Ref myVpc
+AvailabilityZone: ap-south-1b
+Tags:
+- Key: Name
+Value: priSubnetAppTier
+priSubnetDBTier1:
+Type: 'AWS::EC2::Subnet'
+Properties:
+CidrBlock: 10.0.2.0/24
+VpcId: !Ref myVpc
+AvailabilityZone: ap-south-1b
+Tags:
+- Key: Name
+Value: priSubnetDBTier1
+priSubnetDBTier2:
+Type: 'AWS::EC2::Subnet'
+Properties:
+CidrBlock: 10.0.3.0/24
+VpcId: !Ref myVpc
+AvailabilityZone: ap-south-1c
+Tags:
+- Key: Name
+Value: priSubnetDBTier2
+priDbSubnetGroup:
+Type: 'AWS::RDS::DBSubnetGroup'
+Properties:
+DBSubnetGroupName: priDbSubnetGroup
+DBSubnetGroupDescription: DB Subnet Group
+SubnetIds:
+- !Ref priSubnetDBTier1
+- !Ref priSubnetDBTier2
+iGW:
+Type: 'AWS::EC2::InternetGateway'
+Properties:
+Tags:
+- Key: Namr
+Value: iGW
+attachment:
+Type: 'AWS::EC2::VPCGatewayAttachment'
+Properties:
+InternetGatewayId: !Ref iGW
+VpcId: !Ref myVpc
+elasticIp:
+Type: 'AWS::EC2::EIP'
+natGateway:
+Type: 'AWS::EC2::NatGateway'
+Properties:
+AllocationId: !GetAtt
+- elasticIp
+- AllocationId
+SubnetId: !Ref pubSubnetWebTier
+DependsOn:
+- attachment
+pubRouteTable:
+Type: 'AWS::EC2::RouteTable'
+Properties:
+VpcId: !Ref myVpc
+Tags:
+- Key: Name
+Value: pubRouteTable
+pubRoute:
+Type: 'AWS::EC2::Route'
+Properties:
+RouteTableId: !Ref pubRouteTable
+DestinationCidrBlock: 0.0.0.0/0
+GatewayId: !Ref iGW
+pubSubRouteAssociation:
+Type: 'AWS::EC2::SubnetRouteTableAssociation'
+Properties:
+RouteTableId: !Ref pubRouteTable
+SubnetId: !Ref pubSubnetWebTier
+priRouteTable:
+Type: 'AWS::EC2::RouteTable'
+Properties:
+VpcId: !Ref myVpc
+Tags:
+- Key: Name
+Value: priRouteTable
+priRoute:
+Type: 'AWS::EC2::Route'
+Properties:
+RouteTableId: !Ref priRouteTable
+DestinationCidrBlock: 0.0.0.0/0
+NatGatewayId: !Ref natGateway
+priSubRouteAssociation:
+Type: 'AWS::EC2::SubnetRouteTableAssociation'
+Properties:
+RouteTableId: !Ref priRouteTable
+SubnetId: !Ref priSubnetAppTier
+securityGroupWebTier:
+Type: 'AWS::EC2::SecurityGroup'
+Properties:
+GroupName: securityGroupWebTier
+GroupDescription: Allow HTTP and SSH
+SecurityGroupIngress:
+- Description: Allow HTTP
+IpProtocol: tcp
+FromPort: '80'
+ToPort: '80'
+CidrIp: 0.0.0.0/0
+- Description: Allow SSH
+IpProtocol: tcp
+FromPort: '22'
+ToPort: '22'
+CidrIp: 0.0.0.0/0
+Tags:
+- Key: Name
+Value: securityGroupWebTier
+VpcId: !Ref myVpc
+securityGroupAppTier:
+Type: 'AWS::EC2::SecurityGroup'
+Properties:
+GroupName: securityGroupAppTier
+GroupDescription: Allow SSH from pubSubnetWebTier
+SecurityGroupIngress:
+- Description: Allow SSH from pubSubnetWebTier
+FromPort: '22'
+IpProtocol: tcp
+SourceSecurityGroupId: !Ref securityGroupWebTier
+ToPort: '22'
+Tags:
+- Key: Name
+Value: securityGroupAppTier
+VpcId: !Ref myVpc
+securityGroupDbTier:
+Type: 'AWS::EC2::SecurityGroup'
+Properties:
+GroupName: securityGroupDbTier
+GroupDescription: Allow Port 3306 from securityGroupAppTier
+SecurityGroupIngress:
+- Description: Allow Port 3306 from securityGroupAppTier
+FromPort: '3306'
+IpProtocol: tcp
+SourceSecurityGroupId: !Ref securityGroupAppTier
+ToPort: '3306'
+Tags:
+- Key: Name
+Value: securityGroupDbTier
+VpcId: !Ref myVpc
+pubEc2Web:
+Type: 'AWS::EC2::Instance'
+Properties:
+ImageId: ami-0e670eb768a5fc3d4
+InstanceType: t2.micro
+AvailabilityZone: ap-south-1b
+KeyName: prod-dev
+SubnetId: !Ref pubSubnetWebTier
+SecurityGroupIds:
+- !Ref securityGroupWebTier
+Tags:
+- Key: Name
+Value: pubEc2Web
+priEc2App:
+Type: 'AWS::EC2::Instance'
+Properties:
+ImageId: ami-0e670eb768a5fc3d4
+InstanceType: t2.micro
+AvailabilityZone: ap-south-1b
+KeyName: prod-dev
+SubnetId: !Ref priSubnetAppTier
+SecurityGroupIds:
+- !Ref securityGroupAppTier
+Tags:
+- Key: Name
+Value: priEc2App
+myRdsDb:
+Type: 'AWS::RDS::DBInstance'
+Properties:
+AllocatedStorage: '20'
+AvailabilityZone: ap-south-1b
+DBInstanceClass: db.t3.micro
+DBInstanceIdentifier: testdb
+DBSubnetGroupName: !Ref priDbSubnetGroup
+DeletionProtection: 'true'
+Engine: mysql
+EngineVersion: 8.0.35
+MasterUsername: admin
+MasterUserPassword: Admin123
+Tags:
+- Key: Name
+Value: myRdsDb
+VPCSecurityGroups:
+- !Ref securityGroupDbTier
