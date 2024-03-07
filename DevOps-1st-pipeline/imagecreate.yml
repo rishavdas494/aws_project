@@ -1,0 +1,16 @@
+---
+- hosts: ansible
+  gather_facts: false
+  tasks:
+  -  name: Delete previouly created images
+     command: docker rmi webappimage rishavdas494/webappimage
+     ignore_errors: true
+  -  name: Create webapp image
+     command: docker build -t webappimage
+     args:
+        chdir: /opt/docker
+  -  name: Tagging of image
+     command: docker image tag webappimage rishavdas494/webappimage
+  -  name: Pushing images
+     command: docker push rishavdas494/webappimage
+...
