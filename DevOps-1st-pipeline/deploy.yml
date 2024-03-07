@@ -1,0 +1,16 @@
+---
+- hosts: docker
+  gather_facts: false 
+  tasks: 
+  - name: Delete previouly created images
+    command: docker rmi webappimage rishavdas494/webeppimage
+    ignore_errors: true
+  - name: Delete previouly created container
+    command: docker rm webapp-c --force
+    ignore_errors: true
+  - name: Pull docker image
+    command: docker pull rishavdas494/webappimage
+    args:
+      chdir: /opt/docker
+  - name: Run the container
+    command: docker run -d -p 8080:8080 --name webapp-c rishavdas494/webappimage
