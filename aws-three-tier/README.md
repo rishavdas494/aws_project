@@ -68,6 +68,10 @@ Private-DB-Subnet-AZ-2 - 10.0.5.0/24
 
 ![alt text](<screenshots/Screenshot 2024-03-16 112705.png>) 
 
+**Create a NAT gateway and add the route to private routing table**
+
+![alt text](<screenshots/Screenshot 2024-03-17 092114.png>)
+
 ## Database Setup 
 
 **Navigate to the RDS dashboard in the AWS console and click on Subnet groups on the left hand side. Click Create DB subnet group.**
@@ -103,3 +107,155 @@ Private-DB-Subnet-AZ-2 - 10.0.5.0/24
 ![alt text](<screenshots/Screenshot 2024-03-17 091659.png>)
 
 # App Tier Setup
+
+**Go to Launch instances and launch an EC2**
+
+![alt text](<screenshots/Screenshot 2024-03-17 091909.png>)
+
+**Select my-vpc and private subnet 1 also select privateinstancesg security group and then click on create**
+
+![alt text](<screenshots/Screenshot 2024-03-17 091943.png>)
+
+**Create a Bastion host in the public subnet with all traffic enabled. This is required to connect to other instances**
+
+![alt text](<screenshots/Screenshot 2024-03-17 092303.png>)
+
+**Connect to the Bastion host and from there go to the app tier instance.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 092414.png>) 
+![alt text](<screenshots/Screenshot 2024-03-17 092511.png>) 
+![alt text](<screenshots/Screenshot 2024-03-17 092645.png>) 
+![alt text](<screenshots/Screenshot 2024-03-17 092711.png>) 
+
+**Install the mariadb105-server on the app instance.**
+```
+sudo yum install mariadb105-server -y
+```
+![alt text](<screenshots/Screenshot 2024-03-17 093013.png>) 
+
+**Then connect to database using endpoint.**
+```
+mysql -h CHANGE-TO-YOUR-RDS-ENDPOINT -u CHANGE-TO-USER-NAME -p
+```
+![alt text](<screenshots/Screenshot 2024-03-17 093041.png>) 
+
+**Create a database called webappdb**
+```
+CREATE DATABASE webappdb;   
+```
+**You can verify that it was created correctly**
+```
+SHOW DATABASES;
+```
+**Create a data table:**
+```
+USE webappdb;    
+```
+![alt text](<screenshots/Screenshot 2024-03-17 093117.png>) 
+
+**Then, create the following transactions table by executing this create table command:**
+```
+CREATE TABLE IF NOT EXISTS transactions(id INT NOT NULL
+AUTO_INCREMENT, amount DECIMAL(10,2), description
+VARCHAR(100), PRIMARY KEY(id));    
+```
+**Verify the table was created:**
+```
+SHOW TABLES;
+```
+
+**Insert data into table for testing later:**
+```
+INSERT INTO transactions (amount,description) VALUES ('400','groceries');   
+```
+
+**Verify that your data**
+```
+SELECT * FROM transactions;
+```
+
+![alt text](<screenshots/Screenshot 2024-03-17 093153.png>) 
+
+**We will create a S3 bucket which will contain configuration**
+
+![alt text](<screenshots/Screenshot 2024-03-17 093504.png>)
+
+**Create a role and attach S3ReadOnlyRole and Ec2ManagedInstanceCore permission to it.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 093800.png>) 
+
+**The first thing we will do is update our database credentials for the app tier. To do this, open the application-code/app-tier/DbConfig.js file from the github repo. Fill this in with the credentials, the writer endpoint of the database as the hostname, and webappdb for the database. Save the file.**
+
+![alt text](screenshots/s3.png)
+
+**Now move to the app instance and run th following commands for setup**
+
+```
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+source ~/.bashrc
+```
+Next, install Node.js and make sure it's being used
+```
+nvm install 16
+nvm use 16
+```
+PM2 is a daemon process manager that will keep our node.js app running when we exit the instance or if it is rebooted. Install that as well.
+```
+npm install -g pm2   
+```
+Now we need to download our code from our s3 buckets onto our instance. In the command below, replace BUCKET_NAME with the name of the bucket you uploaded the app-tier folder to:
+```
+cd ~/
+aws s3 cp s3://BUCKET_NAME/app-tier/ app-tier --recursive
+```
+Navigate to the app directory, install dependencies, and start the app with pm2.
+```
+cd ~/app-tier
+npm install
+pm2 start index.js
+```
+To make sure the app is running correctly run the following:
+```
+pm2 list
+```
+If you see a status of online, the app is running. If you see errored, then you need to do some troubleshooting. To look at the latest errors, use this command:
+```
+pm2 logs
+```
+
+Right now, pm2 is just making sure our app stays running when we leave the SSM session. However, if the server is interrupted for some reason, we still want the app to start and keep running. This is also important for the AMI we will create:
+```
+pm2 startup
+```
+After running this you will see a message similar to this.
+
+[PM2] To setup the Startup Script, copy/paste the following command: 
+```
+sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v16.0.0/bin /home/ec2-user/.nvm/versions/node/v16.0.0/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user —hp /home/ec2-user
+```
+After that, save the current list of node processes with the following command:
+```
+pm2 save
+```
+**Now let's run a couple tests to see if our app is configured correctly.**
+
+**To hit out health check endpoint**
+```
+curl http://localhost:4000/health
+```
+**The response should looks like the following:**
+```
+"This is the health check"
+```
+**Next, test your database connection**
+```
+curl http://localhost:4000/transaction
+```
+You should see a response containing the test data we added earlier:
+```
+{"result":[{"id":1,"amount":400,"description":"groceries"},{"id":2,"amount":100,"description":"class"},{"id":3,"amount":200,"description":"other groceries"},{"id":4,"amount":10,"description":"brownies"}]}
+```
+**If you see both of these responses, then your networking, security, database and app configurations are correct.**
+
+# Internal Load Balancing and Autoscaling
+
