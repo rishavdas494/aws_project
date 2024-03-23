@@ -259,3 +259,237 @@ You should see a response containing the test data we added earlier:
 
 # Internal Load Balancing and Autoscaling
 
+**Select the AppServer then go to actions then image then click on create image.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094531.png>) 
+
+**Provide image name and click on create.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094543.png>)
+
+**Go to EC2 dashboard navigate to Target Groups under Load Balancing, Click on Create Target Group.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094640.png>) 
+
+**Choose type as instances, provide group name then select port 4000 and protocol HTTP and health path as /health and click on create.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094742.png>)
+
+![alt text](<screenshots/Screenshot 2024-03-17 094747.png>)
+
+**On the left hand side of the EC2 dashboard select Load Balancers under Load Balancing and click Create Load Balancer.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094826.png>)
+
+**Select the application load balancer here**
+![alt text](<screenshots/Screenshot 2024-03-17 094833.png>)
+
+**Provide load balancer name, then check the scheme as internal then select VPC and select the private subnets, also select the seurity group as internal-lb-sg which we created earlier.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 094921.png>)
+
+![alt text](<screenshots/Screenshot 2024-03-17 094926.png>)
+
+**Next create a launch template**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095007.png>) 
+
+**Choose the AMI that we created earlier.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095159.png>) 
+
+**Select insance type and select the IAM role also**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095206.png>)
+
+![alt text](<screenshots/Screenshot 2024-03-17 095217-1.png>)
+
+**Go to EC2 dashboard navigate to Auto Scaling Groups under Auto Scaling and click Create Auto Scaling group.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095245.png>)
+
+**Give Auto Scaling group a name, and then select the Launch Template we created and click next.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095302.png>)
+
+**Select the VPC and choose the private subnets, and click on next.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095345.png>)
+
+**Attach this Auto Scaling Group to the Load Balancer we just created by selecting the existing load balancer's target group from the dropdown. Then, click next.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095359.png>)
+
+**For Configure group size and scaling policies, set desired, minimum and maximum capacity to 2. Click skip to review and then Create Auto Scaling Group.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 095416.png>)
+
+
+# Web Tier Instance Setup
+
+**Before we create and configure the web instances, open up the application-code/nginx.conf file from the repo we downloaded. Scroll down to line 58 and replace [INTERNAL-LOADBALANCER-DNS] with internal load balancer’s DNS entry.**
+
+**Then, upload this file and the application-code/web-tier folder to the s3 bucket.**
+
+![alt text](screenshots/ReplaceCode.png)
+
+**Create a web instance, provide name and select AMI.**
+
+![alt text](<screenshots/Screenshot 2024-03-17 100402.png>)
+
+**Select the security group and keypair and IAM profile and click on create.**
+![alt text](<screenshots/Screenshot 2024-03-17 100414.png>) 
+![alt text](<screenshots/Screenshot 2024-03-17 100406.png>)
+
+**Connect to EC2 and run following commands.**
+
+**We need to install all of the necessary components needed to run our front-end application. Again, start by installing NVM and node :**
+
+```
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+source ~/.bashrc
+nvm install 16
+nvm use 16
+```
+
+**Then download our web tier code from our s3 bucket:**
+```
+cd ~/
+aws s3 cp s3://BUCKET_NAME/web-tier/ web-tier --recursive
+```
+
+**Navigate to the web-layer folder and create the build folder for the react app:**
+```
+cd ~/web-tier
+npm install 
+npm run build
+```
+
+**Install NGINX.**
+```
+sudo amazon-linux-extras install nginx1 -y
+```
+
+**Navigate to the Nginx configuration file with the following commands and list the files in the directory:**
+```
+cd /etc/nginx
+ls
+```
+
+**You should see an nginx.conf file. We’re going to delete this file and use the one we uploaded to s3. Replace the bucket name in the command below with the one you created for this workshop:**
+```
+sudo rm nginx.conf
+sudo aws s3 cp s3://BUCKET_NAME/nginx.conf .
+```
+
+**Then, restart Nginx with the following command:**
+
+```
+sudo service nginx restart
+```
+
+**To make sure Nginx has permission to access our files execute this command:**
+
+```
+chmod -R 755 /home/ec2-user
+```
+
+**And then to make sure the service starts on boot, run this command:**
+
+```
+sudo chkconfig nginx on
+```
+**Now when you type in the public IP of your web tier instance, you should see your website.**
+
+![alt text](screenshots/WebPage1.png) 
+
+![alt text](screenshots/WebPage2.png)
+
+# External Load Balancer and Auto Scaling
+
+**Navigate to Instances. Select the web tier instance we created and under Actions select Image and templates. Click Create Image.**
+
+![alt text](screenshots/CreateAMI1.png)
+
+**Give the image a name and description and then click Create image.**
+
+![alt text](screenshots/CreateAMI2.png)
+
+**Create a target group to use with the load balancer.**
+
+![alt text](screenshots/CreateTargetGroup.png)
+
+**Select Instances as the target type and give it a name.**
+
+![alt text](screenshots/FillTargetGroupDetails1.png) 
+
+**Then, set the protocol to HTTP and the port to 80 and change the health check path to be /health.**
+
+![alt text](FillTargetGroupDetails2.png)
+
+**We are NOT going to register any targets for now**
+
+![alt text](screenshots/NoTargets.png) 
+
+**Go to EC2 dashboard select Load Balancers under Load Balancing and click Create Load Balancer.**
+
+![alt text](screenshots/CreateLB.png)
+
+**We'll be using an Application Load Balancer for our HTTP traffic**
+
+![alt text](screenshots/SelectALB.png) 
+
+**After giving the load balancer a name, select internet facing**
+
+![alt text](screenshots/LBConfig1.png) 
+
+**Select the correct network configuration for VPC and public subnets**
+
+![alt text](screenshots/LBConfig2.png)
+
+**Select the security group we created for this ALB.**
+
+![alt text](screenshots/LBConfig3.png) 
+
+**we need to create a Launch template with the AMI we created earlier.**
+
+![alt text](screenshots/CreateLaunchTemplate.png)
+
+**Name the Launch Template, and then under Application and OS Images include the app tier AMI.**
+
+![alt text](screenshots/LaunchTemplateConfig1.png) 
+
+**Under Instance Type select t2.micro. For Key pair and Network Settings don't include it in the template.**
+
+![alt text](screenshots/LaunchTemplateConfig2.png) 
+
+**Set the correct security group for our web tier, and then under Advanced details use the same IAM instance profile we have been using for our EC2 instances.**
+
+![alt text](screenshots/LaunchTemplateConfig3.png) 
+
+![alt text](screenshots/LaunchTemplateConfig4.png) 
+
+**We will now create the Auto Scaling Group for our web instances.**
+
+![alt text](screenshots/CreateASG.png) 
+
+**Give Auto Scaling group a name, and then select the Launch Template we just created and click next.**
+
+![alt text](screenshots/ConfigureASG1.png) 
+
+**On the Choose instance launch options page set your VPC, and the public subnets for the web tier**
+
+![alt text](screenshots/ConfigureASG2.png) 
+
+**attach this Auto Scaling Group to the Load Balancer we just created**
+
+![alt text](screenshots/ConfigureASG3.png) 
+
+**For Configure group size and scaling policies, set desired, minimum and maximum capacity to 2. Click skip to review and then Create Auto Scaling Group.**
+
+![alt text](screenshots/ConfigureASG4.png) 
+
+**Now the task is completed we can now visit the application by providing DNS of external load balancer**
+
+**Reference: https://catalog.us-east-1.prod.workshops.aws/workshops/85cd2bb2-7f79-4e96-bdee-8078e469752a/en-US**
+
